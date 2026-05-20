@@ -347,6 +347,8 @@ function publishToMQTT(location: NormalizedLocation) {
         proc_time: new Date().toISOString()
     });
 
+    console.log(`[MQTT PUBLISH] Topic: ${topic} | Payload: ${payload}`);
+
     // Publish with QoS 1 to guarantee at least once delivery
     mqttClient.publish(topic, payload, { qos: 1 }, (err) => {
         if (err) console.error(`Failed to publish message to topic ${topic}:`, err.message);
