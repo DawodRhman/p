@@ -313,6 +313,7 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
         // Dump the raw buffer for debugging
         console.error(`[RAW BUFFER] ${session.buffer.toString('hex')}`);
     }
+}
 
     const ack = Buffer.alloc(4);
     ack.writeUInt32BE(totalRecords, 0);
