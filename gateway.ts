@@ -8,6 +8,7 @@ interface NormalizedLocation {
     longitude: number;
     timestamp: Date;
     speed: number;
+    io?: Record<number, number>;
 }
 
 interface SocketSession {
@@ -288,12 +289,27 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
 
             offset += 24; 
 
-            // Fast-forward over variable I/O sensor block
-            offset += 2; // Skip eventId and total elements byte
-            const count1B = session.buffer.readUInt8(offset); offset += 1 + (count1B * 2);
-            const count2B = session.buffer.readUInt8(offset); offset += 1 + (count2B * 3);
-            const count4B = session.buffer.readUInt8(offset); offset += 1 + (count4B * 5);
-            const count8B = session.buffer.readUInt8(offset); offset += 1 + (count8B * 9);
+            const ioElements: Record<number, number> = {};
+            const eventId = session.buffer.readUInt8(offset);
+            const totalIo = session.buffer.readUInt8(offset + 1);
+            offset += 2;
+
+            const count1B = session.buffer.readUInt8(offset); offset += 1;
+            for (let j = 0; j < count1B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt8(offset + 1); offset += 2; }
+            
+            const count2B = session.buffer.readUInt8(offset); offset += 1;
+            for (let j = 0; j < count2B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt16BE(offset + 1); offset += 3; }
+            
+            const count4B = session.buffer.readUInt8(offset); offset += 1;
+            for (let j = 0; j < count4B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt32BE(offset + 1); offset += 5; }
+            
+            const count8B = session.buffer.readUInt8(offset); offset += 1;
+            for (let j = 0; j < count8B; j++) { 
+                const high = session.buffer.readUInt32BE(offset + 1);
+                const low = session.buffer.readUInt32BE(offset + 5);
+                ioElements[session.buffer.readUInt8(offset)] = (high * 4294967296) + low;
+                offset += 9; 
+            }
 
             if (lat !== 0 && lon !== 0) {
                 publishToMQTT({
@@ -302,7 +318,8 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
                     latitude: lat,
                     longitude: lon,
                     timestamp: new Date(timestampMs),
-                    speed: speed
+                    speed: speed,
+                    io: ioElements
                 });
             } else {
                 console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
@@ -344,6 +361,7 @@ function publishToMQTT(location: NormalizedLocation) {
         lon: location.longitude,
         speed: location.speed,
         time: location.timestamp.toISOString(),
+        io: location.io || {},
         proc_time: new Date().toISOString()
     });
 
