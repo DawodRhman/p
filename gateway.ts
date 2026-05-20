@@ -275,8 +275,9 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
 
     if (codecId === 0x08) {
         let offset = 10;
-        for (let i = 0; i < totalRecords; i++) {
-            if (offset + 15 > session.buffer.length) break;
+        try {
+            for (let i = 0; i < totalRecords; i++) {
+                if (offset + 15 > session.buffer.length) break;
 
             const timestampLong = session.buffer.slice(offset, offset + 8);
             const timestampMs = timestampLong.reduce((acc, byte) => (acc * 256) + byte, 0);
@@ -307,6 +308,10 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
                 console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
             }
         }
+    } catch (err: any) {
+        console.error(`[CRASH PREVENTED] Error parsing Teltonika Codec 8 payload: ${err.message}. Offset: ${offset}, Buffer Size: ${session.buffer.length}`);
+        // Dump the raw buffer for debugging
+        console.error(`[RAW BUFFER] ${session.buffer.toString('hex')}`);
     }
 
     const ack = Buffer.alloc(4);
