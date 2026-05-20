@@ -8,6 +8,9 @@ interface NormalizedLocation {
     longitude: number;
     timestamp: Date;
     speed: number;
+    angle?: number;
+    altitude?: number;
+    satellites?: number;
     io?: Record<number, number>;
 }
 
@@ -285,6 +288,9 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
 
             const lon = session.buffer.readInt32BE(offset + 9) / 10000000;
             const lat = session.buffer.readInt32BE(offset + 13) / 10000000;
+            const altitude = session.buffer.readInt16BE(offset + 17);
+            const angle = session.buffer.readUInt16BE(offset + 19);
+            const satellites = session.buffer.readUInt8(offset + 21);
             const speed = session.buffer.readUInt16BE(offset + 22);
 
             offset += 24; 
@@ -319,6 +325,9 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
                     longitude: lon,
                     timestamp: new Date(timestampMs),
                     speed: speed,
+                    angle: angle,
+                    altitude: altitude,
+                    satellites: satellites,
                     io: ioElements
                 });
             } else {
@@ -360,6 +369,9 @@ function publishToMQTT(location: NormalizedLocation) {
         lat: location.latitude,
         lon: location.longitude,
         speed: location.speed,
+        angle: location.angle || 0,
+        altitude: location.altitude || 0,
+        satellites: location.satellites || 0,
         time: location.timestamp.toISOString(),
         io: location.io || {},
         proc_time: new Date().toISOString()
