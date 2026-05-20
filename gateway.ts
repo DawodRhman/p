@@ -271,6 +271,8 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
     const codecId = session.buffer.readUInt8(8);
     const totalRecords = session.buffer.readUInt8(9);
 
+    console.log(`[DATA] Received Codec ID 0x${codecId.toString(16)} with ${totalRecords} records.`);
+
     if (codecId === 0x08) {
         let offset = 10;
         for (let i = 0; i < totalRecords; i++) {
@@ -301,6 +303,8 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
                     timestamp: new Date(timestampMs),
                     speed: speed
                 });
+            } else {
+                console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
             }
         }
     }
