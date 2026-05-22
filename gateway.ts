@@ -155,7 +155,8 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
     const protocolNumber = session.buffer.readUInt8(protocolOffset);
     const serialNumber = session.buffer.readUInt16BE(totalFrameLength - 6);
 
-    console.log(`[CONCOX DATA] Received Protocol ID 0x${protocolNumber.toString(16)}`);
+    const rawPacketStr = session.buffer.slice(0, totalFrameLength).toString('hex');
+    console.log(`[CONCOX DATA] Received Protocol ID 0x${protocolNumber.toString(16)} | Raw: ${rawPacketStr}`);
 
     if (protocolNumber === 0x01) {
         session.deviceId = session.buffer.slice(4, 12).toString('hex');
