@@ -73,7 +73,7 @@ function processBuffer(socket: net.Socket, session: SocketSession) {
             session.protocol = 'teltonika';
         } else if (leading16 === 0x7878 || leading16 === 0x7979) {
             session.protocol = 'concox';
-        } else if (leading16 >= 0x0008 && leading16 <= 0x0040) { 
+        } else if (leading16 >= 0x0008 && leading16 <= 0x0040) {
             session.protocol = 'teltonika';
         } else {
             session.buffer = Buffer.alloc(0); // Clear unparseable streams
@@ -108,16 +108,16 @@ function calculateCRC16(buffer: Buffer): number {
  */
 function parseConcoxStream(socket: net.Socket, session: SocketSession) {
     if (session.buffer.length < 5) return;
-    
+
     const startFlag = session.buffer.readUInt16BE(0);
-    
+
     let packetLength: number;
     let totalFrameLength: number;
     let protocolOffset: number;
-    
+
     if (startFlag === 0x7878) {
         packetLength = session.buffer.readUInt8(2);
-        totalFrameLength = packetLength + 5; 
+        totalFrameLength = packetLength + 5;
         protocolOffset = 3;
     } else if (startFlag === 0x7979) {
         packetLength = session.buffer.readUInt16BE(2);
@@ -129,17 +129,17 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         const next79 = session.buffer.indexOf(0x79);
         const next = Math.min(next78 !== -1 ? next78 : 99999, next79 !== -1 ? next79 : 99999);
         session.buffer = session.buffer.slice(next !== 99999 && next > 0 ? next : 1);
-        if (session.buffer.length > 0) processBuffer(socket, session);
+        if (session.buffer.length > 0) setImmediate(() => processBuffer(socket, session));
         return;
     }
 
     if (session.buffer.length < totalFrameLength) return;
 
     // CRC VALIDATION STEP
-    const crcStartIndex = 2; 
+    const crcStartIndex = 2;
     const crcLength = totalFrameLength - 6; // Excludes start flag (2B), CRC (2B), and end flag (2B)
     const dataToVerify = session.buffer.slice(crcStartIndex, crcStartIndex + crcLength);
-    
+
     const calculatedCrc = calculateCRC16(dataToVerify);
     const receivedCrc = session.buffer.readUInt16BE(totalFrameLength - 4);
 
@@ -147,7 +147,7 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         console.error(`[CRC ERROR] Concox frame validation failed. Calculated: ${calculatedCrc.toString(16)}, Received: ${receivedCrc.toString(16)}. Corrupt packet dropped.`);
         console.error(`[RAW CONCOX BUFFER] ${session.buffer.slice(0, totalFrameLength).toString('hex')}`);
         session.buffer = session.buffer.slice(totalFrameLength); // Discard bad frame
-        if (session.buffer.length > 0) processBuffer(socket, session);
+        if (session.buffer.length > 0) setImmediate(() => processBuffer(socket, session));
         return;
     }
 
@@ -160,10 +160,10 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         session.deviceId = session.buffer.slice(4, 12).toString('hex');
         console.log(`Concox logged in successfully. ID: ${session.deviceId}`);
         sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
-    } 
+    }
     else if (protocolNumber === 0x12 || protocolNumber === 0x22) {
         let offset = 4;
-        
+
         const year = session.buffer.readUInt8(offset);
         const month = session.buffer.readUInt8(offset + 1);
         const day = session.buffer.readUInt8(offset + 2);
@@ -171,18 +171,18 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         const minute = session.buffer.readUInt8(offset + 4);
         const second = session.buffer.readUInt8(offset + 5);
         const timestamp = new Date(Date.UTC(2000 + year, month - 1, day, hour, minute, second));
-        
+
         offset += 7; // Increment past time & satellite counters
 
         const rawLat = session.buffer.readUInt32BE(offset);
         const rawLon = session.buffer.readUInt32BE(offset + 4);
         let lat = rawLat / 1800000;
         let lon = rawLon / 1800000;
-        
+
         offset += 8;
         const speed = session.buffer.readUInt8(offset);
         const courseStatus = session.buffer.readUInt16BE(offset + 1);
-        
+
         const isGpsPositioned = (courseStatus & 0x1000) !== 0;
         const isWest = (courseStatus & 0x0800) !== 0;
         const isNorth = (courseStatus & 0x0400) !== 0;
@@ -221,7 +221,7 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
     }
 
     session.buffer = session.buffer.slice(totalFrameLength);
-    if (session.buffer.length > 0) processBuffer(socket, session);
+    if (session.buffer.length > 0) setImmediate(() => processBuffer(socket, session));
 }
 
 /**
@@ -260,14 +260,14 @@ function sendConcoxTimeSyncAck(socket: net.Socket, startFlag: number, protocol: 
     const ackBody = Buffer.alloc(10);
     ackBody.writeUInt8(0x0B, 0); // Length: 1 (Protocol) + 6 (Time) + 2 (Serial) + 2 (CRC) = 11 (0x0B)
     ackBody.writeUInt8(protocol, 1);
-    
+
     ackBody.writeUInt8(year, 2);
     ackBody.writeUInt8(month, 3);
     ackBody.writeUInt8(day, 4);
     ackBody.writeUInt8(hour, 5);
     ackBody.writeUInt8(minute, 6);
     ackBody.writeUInt8(second, 7);
-    
+
     ackBody.writeUInt16BE(serial, 8);
 
     const computedCrc = calculateCRC16(ackBody);
@@ -288,22 +288,22 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
     if (!session.deviceId) {
         if (session.buffer.length < 2) return;
         const imeiLength = session.buffer.readUInt16BE(0);
-        
+
         if (session.buffer.length < 2 + imeiLength) return;
         session.deviceId = session.buffer.slice(2, 2 + imeiLength).toString('ascii');
         session.buffer = session.buffer.slice(2 + imeiLength);
-        
-        socket.write(Buffer.from([0x01])); 
+
+        socket.write(Buffer.from([0x01]));
         console.log(`Teltonika logged in successfully. ID: ${session.deviceId}`);
-        
-        if (session.buffer.length >= 4) processBuffer(socket, session);
+
+        if (session.buffer.length >= 4) setImmediate(() => processBuffer(socket, session));
         return;
     }
 
     if (session.buffer.length < 12) return;
     const dataLength = session.buffer.readUInt32BE(4);
-    
-    if (session.buffer.length < 8 + dataLength + 4) return; 
+
+    if (session.buffer.length < 8 + dataLength + 4) return;
     const codecId = session.buffer.readUInt8(8);
     const totalRecords = session.buffer.readUInt8(9);
 
@@ -315,63 +315,63 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
             for (let i = 0; i < totalRecords; i++) {
                 if (offset + 15 > session.buffer.length) break;
 
-            const timestampLong = session.buffer.slice(offset, offset + 8);
-            const timestampMs = timestampLong.reduce((acc, byte) => (acc * 256) + byte, 0);
+                const timestampLong = session.buffer.slice(offset, offset + 8);
+                const timestampMs = timestampLong.reduce((acc, byte) => (acc * 256) + byte, 0);
 
-            const lon = session.buffer.readInt32BE(offset + 9) / 10000000;
-            const lat = session.buffer.readInt32BE(offset + 13) / 10000000;
-            const altitude = session.buffer.readInt16BE(offset + 17);
-            const angle = session.buffer.readUInt16BE(offset + 19);
-            const satellites = session.buffer.readUInt8(offset + 21);
-            const speed = session.buffer.readUInt16BE(offset + 22);
+                const lon = session.buffer.readInt32BE(offset + 9) / 10000000;
+                const lat = session.buffer.readInt32BE(offset + 13) / 10000000;
+                const altitude = session.buffer.readInt16BE(offset + 17);
+                const angle = session.buffer.readUInt16BE(offset + 19);
+                const satellites = session.buffer.readUInt8(offset + 21);
+                const speed = session.buffer.readUInt16BE(offset + 22);
 
-            offset += 24; 
+                offset += 24;
 
-            const ioElements: Record<number, number> = {};
-            const eventId = session.buffer.readUInt8(offset);
-            const totalIo = session.buffer.readUInt8(offset + 1);
-            offset += 2;
+                const ioElements: Record<number, number> = {};
+                const eventId = session.buffer.readUInt8(offset);
+                const totalIo = session.buffer.readUInt8(offset + 1);
+                offset += 2;
 
-            const count1B = session.buffer.readUInt8(offset); offset += 1;
-            for (let j = 0; j < count1B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt8(offset + 1); offset += 2; }
-            
-            const count2B = session.buffer.readUInt8(offset); offset += 1;
-            for (let j = 0; j < count2B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt16BE(offset + 1); offset += 3; }
-            
-            const count4B = session.buffer.readUInt8(offset); offset += 1;
-            for (let j = 0; j < count4B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt32BE(offset + 1); offset += 5; }
-            
-            const count8B = session.buffer.readUInt8(offset); offset += 1;
-            for (let j = 0; j < count8B; j++) { 
-                const high = session.buffer.readUInt32BE(offset + 1);
-                const low = session.buffer.readUInt32BE(offset + 5);
-                ioElements[session.buffer.readUInt8(offset)] = (high * 4294967296) + low;
-                offset += 9; 
+                const count1B = session.buffer.readUInt8(offset); offset += 1;
+                for (let j = 0; j < count1B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt8(offset + 1); offset += 2; }
+
+                const count2B = session.buffer.readUInt8(offset); offset += 1;
+                for (let j = 0; j < count2B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt16BE(offset + 1); offset += 3; }
+
+                const count4B = session.buffer.readUInt8(offset); offset += 1;
+                for (let j = 0; j < count4B; j++) { ioElements[session.buffer.readUInt8(offset)] = session.buffer.readUInt32BE(offset + 1); offset += 5; }
+
+                const count8B = session.buffer.readUInt8(offset); offset += 1;
+                for (let j = 0; j < count8B; j++) {
+                    const high = session.buffer.readUInt32BE(offset + 1);
+                    const low = session.buffer.readUInt32BE(offset + 5);
+                    ioElements[session.buffer.readUInt8(offset)] = (high * 4294967296) + low;
+                    offset += 9;
+                }
+
+                if (lat !== 0 && lon !== 0) {
+                    publishToMQTT({
+                        deviceId: session.deviceId,
+                        protocol: 'teltonika',
+                        latitude: lat,
+                        longitude: lon,
+                        timestamp: new Date(timestampMs),
+                        speed: speed,
+                        angle: angle,
+                        altitude: altitude,
+                        satellites: satellites,
+                        io: ioElements
+                    });
+                } else {
+                    console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
+                }
             }
-
-            if (lat !== 0 && lon !== 0) {
-                publishToMQTT({
-                    deviceId: session.deviceId,
-                    protocol: 'teltonika',
-                    latitude: lat,
-                    longitude: lon,
-                    timestamp: new Date(timestampMs),
-                    speed: speed,
-                    angle: angle,
-                    altitude: altitude,
-                    satellites: satellites,
-                    io: ioElements
-                });
-            } else {
-                console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
-            }
+        } catch (err: any) {
+            console.error(`[CRASH PREVENTED] Error parsing Teltonika Codec 8 payload: ${err.message}. Offset: ${offset}, Buffer Size: ${session.buffer.length}`);
+            // Dump the raw buffer for debugging
+            console.error(`[RAW BUFFER] ${session.buffer.toString('hex')}`);
         }
-    } catch (err: any) {
-        console.error(`[CRASH PREVENTED] Error parsing Teltonika Codec 8 payload: ${err.message}. Offset: ${offset}, Buffer Size: ${session.buffer.length}`);
-        // Dump the raw buffer for debugging
-        console.error(`[RAW BUFFER] ${session.buffer.toString('hex')}`);
     }
-}
 
     const ack = Buffer.alloc(4);
     ack.writeUInt32BE(totalRecords, 0);
