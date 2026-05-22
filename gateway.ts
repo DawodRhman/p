@@ -110,13 +110,32 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
     if (session.buffer.length < 5) return;
     
     const startFlag = session.buffer.readUInt16BE(0);
-    const packetLength = session.buffer.readUInt8(2);
-    const totalFrameLength = packetLength + 5; 
+    
+    let packetLength: number;
+    let totalFrameLength: number;
+    let protocolOffset: number;
+    
+    if (startFlag === 0x7878) {
+        packetLength = session.buffer.readUInt8(2);
+        totalFrameLength = packetLength + 5; 
+        protocolOffset = 3;
+    } else if (startFlag === 0x7979) {
+        packetLength = session.buffer.readUInt16BE(2);
+        totalFrameLength = packetLength + 6;
+        protocolOffset = 4;
+    } else {
+        // Corrupt stream. Find next 0x78 or 0x79 to recover
+        const next78 = session.buffer.indexOf(0x78);
+        const next79 = session.buffer.indexOf(0x79);
+        const next = Math.min(next78 !== -1 ? next78 : 99999, next79 !== -1 ? next79 : 99999);
+        session.buffer = session.buffer.slice(next !== 99999 && next > 0 ? next : 1);
+        if (session.buffer.length > 0) processBuffer(socket, session);
+        return;
+    }
 
     if (session.buffer.length < totalFrameLength) return;
 
     // CRC VALIDATION STEP
-    // Concox CRC covers everything from packet length byte up to the end of the data payload
     const crcStartIndex = 2; 
     const crcLength = totalFrameLength - 6; // Excludes start flag (2B), CRC (2B), and end flag (2B)
     const dataToVerify = session.buffer.slice(crcStartIndex, crcStartIndex + crcLength);
@@ -132,7 +151,7 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         return;
     }
 
-    const protocolNumber = session.buffer.readUInt8(3);
+    const protocolNumber = session.buffer.readUInt8(protocolOffset);
     const serialNumber = session.buffer.readUInt16BE(totalFrameLength - 6);
 
     console.log(`[CONCOX DATA] Received Protocol ID 0x${protocolNumber.toString(16)}`);
