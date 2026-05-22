@@ -12,6 +12,7 @@ interface NormalizedLocation {
     altitude?: number;
     satellites?: number;
     io?: Record<number, number>;
+    raw_payload?: string;
 }
 
 interface SocketSession {
@@ -197,7 +198,8 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
                 latitude: lat,
                 longitude: lon,
                 timestamp: timestamp,
-                speed: speed
+                speed: speed,
+                raw_payload: session.buffer.slice(0, totalFrameLength).toString('hex')
             });
         } else {
             console.log(`[WAITING FOR GPS FIX] Concox Device ${session.deviceId} reported coordinates without lock.`);
@@ -360,7 +362,8 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
                         angle: angle,
                         altitude: altitude,
                         satellites: satellites,
-                        io: ioElements
+                        io: ioElements,
+                        raw_payload: session.buffer.slice(0, 8 + dataLength + 4).toString('hex')
                     });
                 } else {
                     console.log(`[WAITING FOR GPS FIX] Device ${session.deviceId} reported 0,0 coordinates. Make sure the vehicle is outdoors.`);
@@ -378,7 +381,7 @@ function parseTeltonikaStream(socket: net.Socket, session: SocketSession) {
     socket.write(ack);
 
     session.buffer = session.buffer.slice(8 + dataLength + 4);
-    if (session.buffer.length > 0) processBuffer(socket, session);
+    if (session.buffer.length > 0) setImmediate(() => processBuffer(socket, session));
 }
 
 /**
@@ -406,6 +409,7 @@ function publishToMQTT(location: NormalizedLocation) {
         satellites: location.satellites || 0,
         time: location.timestamp.toISOString(),
         io: location.io || {},
+        raw_payload: location.raw_payload,
         proc_time: new Date().toISOString()
     });
 
