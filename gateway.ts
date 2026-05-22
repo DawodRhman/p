@@ -207,7 +207,17 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
             sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
         }
     }
-    else if (protocolNumber === 0x13 || protocolNumber === 0x23 || protocolNumber === 0x16 || protocolNumber === 0x26 || protocolNumber === 0x27) {
+    else if (protocolNumber === 0x13 || protocolNumber === 0x23) {
+        console.log(`[CONCOX HEARTBEAT] Device ${session.deviceId || 'Unknown'} is online (Heartbeat packet, no GPS data).`);
+        sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
+    }
+    else if (protocolNumber === 0x8a) {
+        console.log(`[CONCOX TIME SYNC] Device ${session.deviceId || 'Unknown'} requested time sync.`);
+        // A generic ACK is usually enough to bypass time sync on older Concox models
+        sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
+    }
+    else {
+        console.log(`[CONCOX SYSTEM] Device sent protocol 0x${protocolNumber.toString(16)} (No GPS data).`);
         sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
     }
 
