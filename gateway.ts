@@ -164,6 +164,7 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
 
     if (calculatedCrc !== receivedCrc) {
         console.error(`[CRC ERROR] Concox frame validation failed. Calculated: ${calculatedCrc.toString(16)}, Received: ${receivedCrc.toString(16)}. Corrupt packet dropped.`);
+        console.error(`[RAW CONCOX BUFFER] ${session.buffer.slice(0, totalFrameLength).toString('hex')}`);
         session.buffer = session.buffer.slice(totalFrameLength); // Discard bad frame
         if (session.buffer.length > 0) processBuffer(socket, session);
         return;
