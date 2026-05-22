@@ -135,6 +135,8 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
     const protocolNumber = session.buffer.readUInt8(3);
     const serialNumber = session.buffer.readUInt16BE(totalFrameLength - 6);
 
+    console.log(`[CONCOX DATA] Received Protocol ID 0x${protocolNumber.toString(16)}`);
+
     if (protocolNumber === 0x01) {
         session.deviceId = session.buffer.slice(4, 12).toString('hex');
         console.log(`Concox logged in successfully. ID: ${session.deviceId}`);
@@ -178,13 +180,15 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
                 timestamp: timestamp,
                 speed: speed
             });
+        } else {
+            console.log(`[WAITING FOR GPS FIX] Concox Device ${session.deviceId} reported coordinates without lock.`);
         }
 
         if (protocolNumber === 0x22) {
             sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
         }
     }
-    else if (protocolNumber === 0x13 || protocolNumber === 0x23) {
+    else if (protocolNumber === 0x13 || protocolNumber === 0x23 || protocolNumber === 0x16 || protocolNumber === 0x26 || protocolNumber === 0x27) {
         sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
     }
 
