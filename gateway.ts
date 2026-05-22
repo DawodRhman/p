@@ -212,9 +212,8 @@ function parseConcoxStream(socket: net.Socket, session: SocketSession) {
         sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
     }
     else if (protocolNumber === 0x8a) {
-        console.log(`[CONCOX TIME SYNC] Device ${session.deviceId || 'Unknown'} requested time sync.`);
-        // A generic ACK is usually enough to bypass time sync on older Concox models
-        sendConcoxAck(socket, startFlag, protocolNumber, serialNumber);
+        console.log(`[CONCOX TIME SYNC] Device ${session.deviceId || 'Unknown'} requested time sync. Sending current UTC time.`);
+        sendConcoxTimeSyncAck(socket, startFlag, protocolNumber, serialNumber);
     }
     else {
         console.log(`[CONCOX SYSTEM] Device sent protocol 0x${protocolNumber.toString(16)} (No GPS data).`);
@@ -241,6 +240,43 @@ function sendConcoxAck(socket: net.Socket, startFlag: number, protocol: number, 
     ackBody.copy(ackFrame, 2);
     ackFrame.writeUInt16BE(computedCrc, 6);
     ackFrame.writeUInt16BE(0x0D0A, 8); // End mark (\r\n)
+
+    socket.write(ackFrame);
+}
+
+/**
+ * Generates a Time Sync ACK frame for Concox (Protocol 0x8A)
+ */
+function sendConcoxTimeSyncAck(socket: net.Socket, startFlag: number, protocol: number, serial: number) {
+    const now = new Date();
+    const year = now.getUTCFullYear() - 2000;
+    const month = now.getUTCMonth() + 1;
+    const day = now.getUTCDate();
+    const hour = now.getUTCHours();
+    const minute = now.getUTCMinutes();
+    const second = now.getUTCSeconds();
+
+    // Body: Length (1B) + Protocol (1B) + Year/Month/Day/Hour/Minute/Second (6B) + Serial (2B)
+    const ackBody = Buffer.alloc(10);
+    ackBody.writeUInt8(0x0B, 0); // Length: 1 (Protocol) + 6 (Time) + 2 (Serial) + 2 (CRC) = 11 (0x0B)
+    ackBody.writeUInt8(protocol, 1);
+    
+    ackBody.writeUInt8(year, 2);
+    ackBody.writeUInt8(month, 3);
+    ackBody.writeUInt8(day, 4);
+    ackBody.writeUInt8(hour, 5);
+    ackBody.writeUInt8(minute, 6);
+    ackBody.writeUInt8(second, 7);
+    
+    ackBody.writeUInt16BE(serial, 8);
+
+    const computedCrc = calculateCRC16(ackBody);
+
+    const ackFrame = Buffer.alloc(16);
+    ackFrame.writeUInt16BE(startFlag, 0);
+    ackBody.copy(ackFrame, 2);
+    ackFrame.writeUInt16BE(computedCrc, 12);
+    ackFrame.writeUInt16BE(0x0D0A, 14); // End mark (\r\n)
 
     socket.write(ackFrame);
 }
